@@ -27,6 +27,7 @@ usuario_destino = ""
 
 def enviar_mensaje_whatsapp(numero_destino, mensaje):
     url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
+    print(f"📤 Intentando enviar mensaje a {numero_destino}...", flush=True)
     headers = {
         "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
@@ -40,9 +41,9 @@ def enviar_mensaje_whatsapp(numero_destino, mensaje):
     try:
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         with urllib.request.urlopen(req) as response:
-            print(f"📲 Alerta enviada: {response.getcode()}")
+            print(f"📲 Alerta enviada con éxito. Código: {response.getcode()}", flush=True)
     except Exception as e:
-        print(f"Error al enviar la alerta: {e}")
+        print(f"❌ Error al enviar mensaje: {e}", flush=True)
 
 def obtener_ultimo_numero():
     try:
@@ -53,7 +54,7 @@ def obtener_ultimo_numero():
                 return data.get('result') 
         return None
     except Exception as e:
-        print(f"Error de conexión con la API de Ruleta: {e}")
+        print(f"Error de conexión con la API de Ruleta: {e}", flush=True)
         return None
 
 def rastreador_ruleta():
@@ -71,7 +72,7 @@ def rastreador_ruleta():
             numero_actual = obtener_ultimo_numero()
             if numero_actual is not None and numero_actual != ultimo_numero_visto:
                 ultimo_numero_visto = numero_actual
-                print(f"🔢 Cayó: {numero_actual}")
+                print(f"🔢 Cayó: {numero_actual}", flush=True)
                 if numero_actual in ROJOS:
                     ausencia_rojos = 0
                     ausencia_negros += 1
@@ -124,6 +125,11 @@ def rastreador_ruleta():
         time.sleep(5) 
 
 class WebhookHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+
     def do_GET(self):
         parsed_url = urlparse(self.path)
         if parsed_url.path == '/webhook':
@@ -134,7 +140,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
             if mode and token:
                 if mode == "subscribe" and token == VERIFY_TOKEN:
-                    print(f"🟢 ¡WEBHOOK ACTIVADO! Enviando challenge: {challenge}")
+                    print(f"🟢 ¡WEBHOOK ACTIVADO! Enviando challenge: {challenge}", flush=True)
                     response_payload = challenge.encode('utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/plain')
@@ -143,6 +149,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     self.wfile.write(response_payload)
                     return
                 else:
+                    print(f"❌ Fallo de verificación de Token. Recibido: {token}", flush=True)
                     self.send_response(403)
                     self.end_headers()
                     return
@@ -156,28 +163,33 @@ class WebhookHandler(BaseHTTPRequestHandler):
         if parsed_url.path == '/webhook':
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
-                post_data = self.rfile.read(content_length)
+                post_data = self.rfile.read(content_length).decode('utf-8')
+                print(f"📩 Webhook recibido: {post_data[:200]}...", flush=True)
                 try:
-                    body = json.loads(post_data.decode('utf-8'))
+                    body = json.loads(post_data)
                     if body.get("object"):
-                        event = body["entry"][0]["changes"][0]["value"]
-                        if "messages" in event:
-                            mensaje_info = event["messages"][0]
-                            texto_recibido = mensaje_info["text"]["body"].strip().lower()
-                            remitente = mensaje_info["from"] 
+                        for entry in body.get("entry", []):
+                            for change in entry.get("changes", []):
+                                value = change.get("value", {})
+                                if "messages" in value:
+                                    msg = value["messages"][0]
+                                    remitente = msg.get("from")
+                                    texto = msg.get("text", {}).get("body", "").strip().lower()
+                                    
+                                    print(f"💬 Mensaje de {remitente}: {texto}", flush=True)
 
-                            if texto_recibido == "start":
-                                tracking_active = True
-                                usuario_destino = remitente
-                                enviar_mensaje_whatsapp(remitente, "✅ RuletaBot se ha INICIADO y trabaja desde La Nube. Avisándote en ausencias de 7.")
-                                print(f"⚡ BOT INICIADO manual por {remitente}")
-                            
-                            elif texto_recibido == "stop":
-                                tracking_active = False
-                                enviar_mensaje_whatsapp(remitente, "🛑 RuletaBot se ha PAUSADO.")
-                                print(f"🛑 BOT PAUSADO por {remitente}")
+                                    if texto == "start":
+                                        tracking_active = True
+                                        usuario_destino = remitente
+                                        print(f"⚡ INICIANDO rastreador para {remitente}", flush=True)
+                                        enviar_mensaje_whatsapp(remitente, "✅ RuletaBot se ha INICIADO y trabaja desde La Nube. Avisándote en ausencias de 7.")
+                                    
+                                    elif texto == "stop":
+                                        tracking_active = False
+                                        print(f"🛑 PAUSANDO rastreador por orden de {remitente}", flush=True)
+                                        enviar_mensaje_whatsapp(remitente, "🛑 RuletaBot se ha PAUSADO.")
                 except Exception as e:
-                    print(f"Ignorando error de lectura: {e}")
+                    print(f"❌ Error procesando datos del Webhook: {e}", flush=True)
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"EVENTO RECIBIDO")
@@ -188,5 +200,5 @@ if __name__ == "__main__":
     
     port = int(os.environ.get("PORT", 5000))
     server = HTTPServer(('0.0.0.0', port), WebhookHandler)
-    print(f"🚀 Servidor nativo corriendo en puerto {port}")
+    print(f"🚀 Servidor nativo corriendo en puerto {port}", flush=True)
     server.serve_forever()
