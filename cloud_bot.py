@@ -51,7 +51,11 @@ def obtener_ultimo_numero():
         with urllib.request.urlopen(req, timeout=10) as response:
             if response.getcode() == 200:
                 data = json.loads(response.read().decode('utf-8'))
-                return data.get('result') 
+                # Navegamos la nueva estructura de la API: data -> result -> outcome -> number
+                try:
+                    return data.get('data', {}).get('result', {}).get('outcome', {}).get('number')
+                except:
+                    return None
         return None
     except Exception as e:
         print(f"Error de conexión con la API de Ruleta: {e}", flush=True)
@@ -60,12 +64,12 @@ def obtener_ultimo_numero():
 def rastreador_ruleta():
     global tracking_active, usuario_destino
     ultimo_numero_visto = None
-    ausencia_rojos = 0
-    ausencia_negros = 0
-    ausencia_pares = 0
-    ausencia_impares = 0
-    ausencia_bajos = 0
-    ausencia_altos = 0
+    racha_rojos = 0
+    racha_negros = 0
+    racha_pares = 0
+    racha_impares = 0
+    racha_bajos = 0
+    racha_altos = 0
 
     while True:
         if tracking_active and usuario_destino:
@@ -73,56 +77,63 @@ def rastreador_ruleta():
             if numero_actual is not None and numero_actual != ultimo_numero_visto:
                 ultimo_numero_visto = numero_actual
                 print(f"🔢 Cayó: {numero_actual}", flush=True)
-                if numero_actual in ROJOS:
-                    ausencia_rojos = 0
-                    ausencia_negros += 1
+                
+                # --- Lógica de Tendencia (Rachas) ---
+                # 0 es comodín: suma a la racha activa pero no crea una nueva si no hay racha.
+                
+                # 1. Color
+                if numero_actual == 0:
+                    if racha_rojos > 0: racha_rojos += 1
+                    if racha_negros > 0: racha_negros += 1
+                elif numero_actual in ROJOS:
+                    racha_rojos += 1
+                    racha_negros = 0
                 elif numero_actual in NEGROS:
-                    ausencia_negros = 0
-                    ausencia_rojos += 1
-                else: 
-                    ausencia_rojos += 1
-                    ausencia_negros += 1
-
-                if numero_actual in PARES:
-                    ausencia_pares = 0
-                    ausencia_impares += 1
+                    racha_negros += 1
+                    racha_rojos = 0
+                
+                # 2. Paridad
+                if numero_actual == 0:
+                    if racha_pares > 0: racha_pares += 1
+                    if racha_impares > 0: racha_impares += 1
+                elif numero_actual in PARES:
+                    racha_pares += 1
+                    racha_impares = 0
                 elif numero_actual in IMPARES:
-                    ausencia_impares = 0
-                    ausencia_pares += 1
-                else:
-                    ausencia_pares += 1
-                    ausencia_impares += 1
-
-                if numero_actual in BAJOS:
-                    ausencia_bajos = 0
-                    ausencia_altos += 1
+                    racha_impares += 1
+                    racha_pares = 0
+                
+                # 3. Rango
+                if numero_actual == 0:
+                    if racha_bajos > 0: racha_bajos += 1
+                    if racha_altos > 0: racha_altos += 1
+                elif numero_actual in BAJOS:
+                    racha_bajos += 1
+                    racha_altos = 0
                 elif numero_actual in ALTOS:
-                    ausencia_altos = 0
-                    ausencia_bajos += 1
-                else:
-                    ausencia_bajos += 1
-                    ausencia_altos += 1
+                    racha_altos += 1
+                    racha_bajos = 0
 
-                # Alertas de 7 rachas
-                if ausencia_rojos >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN NEGROS (Ausencia de 7 ROJOS)")
-                    ausencia_rojos = 0
-                if ausencia_negros >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN ROJOS (Ausencia de 7 NEGROS)")
-                    ausencia_negros = 0
-                if ausencia_pares >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN IMPARES (Ausencia de 7 PARES)")
-                    ausencia_pares = 0
-                if ausencia_impares >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN PARES (Ausencia de 7 IMPARES)")
-                    ausencia_impares = 0
-                if ausencia_bajos >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN ALTOS (Ausencia de 7 BAJOS)")
-                    ausencia_bajos = 0
-                if ausencia_altos >= 7:
-                    enviar_mensaje_whatsapp(usuario_destino, "ALERTA POSIBLE APUESTA EN BAJOS (Ausencia de 7 ALTOS)")
-                    ausencia_altos = 0
-        time.sleep(5) 
+                # --- Alertas Inversas (al llegar a 7) ---
+                if racha_rojos == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 ROJOS (con 0s). ¡Apuesta a NEGRO! ⚫")
+                    racha_rojos = 0
+                if racha_negros == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 NEGROS (con 0s). ¡Apuesta a ROJO! 🔴")
+                    racha_negros = 0
+                if racha_pares == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 PARES (con 0s). ¡Apuesta a IMPAR! 🔢")
+                    racha_pares = 0
+                if racha_impares == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 IMPARES (con 0s). ¡Apuesta a PAR! 🔢")
+                    racha_impares = 0
+                if racha_bajos == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 BAJOS (1-18) (con 0s). ¡Apuesta a ALTO! ⬆️")
+                    racha_bajos = 0
+                if racha_altos == 7:
+                    enviar_mensaje_whatsapp(usuario_destino, "⚠️ ALERTA: Racha de 7 ALTOS (19-36) (con 0s). ¡Apuesta a BAJO! ⬇️")
+                    racha_altos = 0
+        time.sleep(2) 
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
@@ -182,7 +193,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                                         tracking_active = True
                                         usuario_destino = remitente
                                         print(f"⚡ INICIANDO rastreador para {remitente}", flush=True)
-                                        enviar_mensaje_whatsapp(remitente, "✅ RuletaBot se ha INICIADO y trabaja desde La Nube. Avisándote en ausencias de 7.")
+                                        enviar_mensaje_whatsapp(remitente, "✅ RuletaBot se ha INICIADO y trabaja desde La Nube. Avisándote en TENDENCIA de 7 (incluye 0s).")
                                     
                                     elif texto == "stop":
                                         tracking_active = False
