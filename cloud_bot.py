@@ -1,4 +1,3 @@
-
 import time
 import json
 import os
@@ -69,8 +68,11 @@ def obtener_historial_500():
         with urllib.request.urlopen(req, timeout=15) as response:
             if response.getcode() == 200:
                 data = json.loads(response.read().decode('utf-8'))
+                # Verificamos si los datos vienen como lista directa o en un campo 'content'
+                items = data if isinstance(data, list) else data.get('content', [])
+                
                 numeros = []
-                for item in data.get('content', []):
+                for item in items:
                     try:
                         num = item.get('data', {}).get('result', {}).get('outcome', {}).get('number')
                         if num is not None: numeros.append(int(num))
@@ -78,38 +80,50 @@ def obtener_historial_500():
                 return numeros[::-1] 
         return []
     except Exception as e:
-        print(f"Error Historial: {e}", flush=True)
+        print(f"❌ Error Historial: {e}", flush=True)
         return []
 
 def analizar_tendencias(numeros):
+    # Rachas actuales
     r = {'rojos': 0, 'negros': 0, 'pares': 0, 'impares': 0, 'bajos': 0, 'altos': 0}
+    # Récords
     max_r = {'rojos': 0, 'negros': 0, 'pares': 0, 'impares': 0, 'bajos': 0, 'altos': 0}
+    
     for n in numeros:
         if n == 0:
             for k in r: r[k] += 1
         else:
             if n in ROJOS: r['rojos'] += 1; r['negros'] = 0
             else: r['negros'] += 1; r['rojos'] = 0
+            
             if n in PARES: r['pares'] += 1; r['impares'] = 0
             else: r['impares'] += 1; r['pares'] = 0
+            
             if n in BAJOS: r['bajos'] += 1; r['altos'] = 0
             else: r['altos'] += 1; r['bajos'] = 0
+            
         for k in r:
             if r[k] > max_r[k]: max_r[k] = r[k]
+            
     return r, max_r
 
 def rastreador_ruleta():
     global tracking_active, usuario_destino
     ultimo_numero_visto = None
     rachas = {'rojos': 0, 'negros': 0, 'pares': 0, 'impares': 0, 'bajos': 0, 'altos': 0}
+
     print("🛰️ Rastreador Immersive iniciado...", flush=True)
+
     while True:
         if tracking_active and usuario_destino:
+            # Sincronización inicial si es la primera vez
             if ultimo_numero_visto is None:
                 historial = obtener_historial_500()
                 if historial:
                     rachas, records = analizar_tendencias(historial)
                     ultimo_numero_visto = historial[-1]
+                    
+                    # Encontrar el récord máximo absoluto
                     max_key = max(records, key=records.get)
                     msg_hist = (f"📈 *ANÁLISIS HISTÓRICO (500 turnos):*\n"
                                 f"La racha más larga fue de *{records[max_key]}* en {max_key.upper()}.\n\n"
@@ -120,23 +134,30 @@ def rastreador_ruleta():
                                 f"✅ *Vigilando Immersive Roulette con alerta en 10.*")
                     enviar_mensaje_whatsapp(usuario_destino, msg_hist)
                 else:
-                    ultimo_numero_visto = -1 
+                    ultimo_numero_visto = -1 # Para evitar bucle si no hay historial
+
             numero_actual = obtener_ultimo_numero()
             if numero_actual is not None and numero_actual != ultimo_numero_visto:
                 ultimo_numero_visto = numero_actual
                 print(f"🔢 Cayó: {numero_actual}", flush=True)
+                
                 if numero_actual == 0:
                     for k in rachas: rachas[k] += 1
                 else:
                     if numero_actual in ROJOS: rachas['rojos'] += 1; rachas['negros'] = 0
                     else: rachas['negros'] += 1; rachas['rojos'] = 0
+                    
                     if numero_actual in PARES: rachas['pares'] += 1; rachas['impares'] = 0
                     else: rachas['impares'] += 1; rachas['pares'] = 0
+                    
                     if numero_actual in BAJOS: rachas['bajos'] += 1; rachas['altos'] = 0
                     else: rachas['altos'] += 1; rachas['bajos'] = 0
+
+                # Alertas en 10
                 for cat, val in rachas.items():
                     if val == 10:
                         enviar_mensaje_whatsapp(usuario_destino, f"🔥 *ALERTA TENDENCIA 10:* {cat.upper()} han salido {val} veces seguidas. (Incluye 0s)")
+        
         time.sleep(3) 
 
 class WebhookHandler(BaseHTTPRequestHandler):
@@ -152,11 +173,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             mode = query_params.get("hub.mode", [""])[0]
             token = query_params.get("hub.verify_token", [""])[0]
             challenge = query_params.get("hub.challenge", [""])[0]
+
             if mode and token:
-                # DEBUG: Esto nos dirá qué está fallando en los logs de Render
-                print(f"🔍 Verificación: Recibido={token}, Configurado={VERIFY_TOKEN}", flush=True)
+                print(f"🔍 Intento de verificación: recibido={token}, mi_config={VERIFY_TOKEN}", flush=True)
                 if mode == "subscribe" and token == VERIFY_TOKEN:
-                    print(f"🟢 ¡WEBHOOK ACTIVADO! Challenge: {challenge}", flush=True)
+                    print(f"🟢 ¡WEBHOOK ACTIVADO! Enviando challenge: {challenge}", flush=True)
                     response_payload = challenge.encode('utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/plain')
@@ -165,9 +186,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     self.wfile.write(response_payload)
                     return
                 else:
-                    print(f"❌ Token incorrecto.", flush=True)
-                    self.send_response(403); self.end_headers(); return
-        self.send_response(200); self.end_headers(); self.wfile.write(b"Bot OK")
+                    print(f"❌ Fallo de verificación de Token. Recibido: {token}", flush=True)
+                    self.send_response(403)
+                    self.end_headers()
+                    return
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Hola! El Bot Ruleta corre sin dependencias.")
 
     def do_POST(self):
         global tracking_active, usuario_destino
@@ -176,6 +201,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 post_data = self.rfile.read(content_length).decode('utf-8')
+                print(f"📩 Webhook recibido: {post_data[:200]}...", flush=True)
                 try:
                     body = json.loads(post_data)
                     if body.get("object"):
@@ -186,20 +212,30 @@ class WebhookHandler(BaseHTTPRequestHandler):
                                     msg = value["messages"][0]
                                     remitente = msg.get("from")
                                     texto = msg.get("text", {}).get("body", "").strip().lower()
+                                    
+                                    print(f"💬 Mensaje de {remitente}: {texto}", flush=True)
+
                                     if texto == "start":
                                         tracking_active = True
                                         usuario_destino = remitente
-                                        enviar_mensaje_whatsapp(remitente, "🚀 Iniciando análisis de 500 números... espera un momento. (Alerta en 10)")
+                                        print(f"⚡ INICIANDO rastreador para {remitente}", flush=True)
+                                        enviar_mensaje_whatsapp(remitente, "🚀 Iniciando análisis de 500 números... espera un momento. (Vigilando tendencia de 10)")
+                                    
                                     elif texto == "stop":
                                         tracking_active = False
-                                        enviar_mensaje_whatsapp(remitente, "🛑 Rastreador pausado.")
-                except Exception as e: print(f"Error Webhook: {e}", flush=True)
-            self.send_response(200); self.end_headers()
+                                        print(f"🛑 PAUSANDO rastreador por orden de {remitente}", flush=True)
+                                        enviar_mensaje_whatsapp(remitente, "🛑 RuletaBot se ha PAUSADO.")
+                except Exception as e:
+                    print(f"❌ Error procesando datos del Webhook: {e}", flush=True)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"EVENTO RECIBIDO")
 
 if __name__ == "__main__":
     hilo = threading.Thread(target=rastreador_ruleta, daemon=True)
     hilo.start()
+    
     port = int(os.environ.get("PORT", 5000))
     server = HTTPServer(('0.0.0.0', port), WebhookHandler)
-    print(f"🚀 Servidor corriendo en puerto {port}", flush=True)
+    print(f"🚀 Servidor nativo corriendo en puerto {port}", flush=True)
     server.serve_forever()
