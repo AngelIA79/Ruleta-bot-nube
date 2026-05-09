@@ -131,7 +131,7 @@ def rastreador_ruleta():
                                 f"Rojos: {rachas['rojos']} | Negros: {rachas['negros']}\n"
                                 f"Pares: {rachas['pares']} | Impares: {rachas['impares']}\n"
                                 f"Bajos: {rachas['bajos']} | Altos: {rachas['altos']}\n\n"
-                                f"✅ *Vigilando Immersive Roulette con alerta en 10.*")
+                                f"✅ *Vigilando Immersive Roulette con alerta en 8.*")
                     enviar_mensaje_whatsapp(usuario_destino, msg_hist)
                 else:
                     ultimo_numero_visto = -1 # Para evitar bucle si no hay historial
@@ -153,10 +153,10 @@ def rastreador_ruleta():
                     if numero_actual in BAJOS: rachas['bajos'] += 1; rachas['altos'] = 0
                     else: rachas['altos'] += 1; rachas['bajos'] = 0
 
-                # Alertas en 10
+                # Alertas en 8
                 for cat, val in rachas.items():
-                    if val == 10:
-                        enviar_mensaje_whatsapp(usuario_destino, f"🔥 *ALERTA TENDENCIA 10:* {cat.upper()} han salido {val} veces seguidas. (Incluye 0s)")
+                    if val == 8:
+                        enviar_mensaje_whatsapp(usuario_destino, f"🔥 *ALERTA TENDENCIA 8:* {cat.upper()} han salido {val} veces seguidas. (Incluye 0s)")
         
         time.sleep(3) 
 
@@ -219,7 +219,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                                         tracking_active = True
                                         usuario_destino = remitente
                                         print(f"⚡ INICIANDO rastreador para {remitente}", flush=True)
-                                        enviar_mensaje_whatsapp(remitente, "🚀 Iniciando análisis de 500 números... espera un momento. (Vigilando tendencia de 10)")
+                                        enviar_mensaje_whatsapp(remitente, "🚀 Iniciando análisis de 500 números... espera un momento. (Vigilando tendencia de 8)")
                                     
                                     elif texto == "stop":
                                         tracking_active = False
